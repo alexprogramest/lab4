@@ -1,4 +1,4 @@
-import json
+import json, pymysql, config
 from abc import ABC, abstractmethod
 
 
@@ -189,105 +189,120 @@ class KievRegionCourse(IOffsiteCourse):
 
 
 class ICourseFactory(ABC):
-    """
-    We have the abstract factory, which consists of three methods.
-    Every of them returns abstract type (in reality just involve it)
-    There I used the annotations for the class and methods for better
-    understanding.
-    """
 
+    @classmethod
     @abstractmethod
-    def create_local_course(self, course_name, main_teacher) -> ILocalCourse:
-        pass
-
-    @abstractmethod
-    def create_offsite_course(self, course_name, course_city, main_teacher) -> IOffsiteCourse:
-        pass
-
-    @abstractmethod
-    def create_teacher(self, name, surname) -> ITeacher:
+    def create_subject(cls, whole_data, arg_choice):
         pass
 
 
 class CourseFactory(ICourseFactory):
 
-    def create_local_course(self, course_name, main_teacher):
-        return KievCourse(course_name, main_teacher)
+    @classmethod
+    def create_subject(cls, arg_choice, *args):
+        if not isinstance(arg_choice, int):
+            raise TypeError("Choice for factory is integer!!")
+        if not 1 <= arg_choice <= 6:
+            raise ValueError("Value of choice for factory must be between 1 and 3!!")
+        if arg_choice == 6:
+            return CourseTeacher(args[0], args[1])
+        if arg_choice == 4:
+            return KievCourse(args[0], cls.create_subject(6))
+        if arg_choice == 5:
+            return KievRegionCourse(args[0], cls.create_subject(6, args[1], args[2]), args[3])
+        if arg_choice == 3:
+            print("Print teacher's info (name with surname)")
+            temp_teacher_name = input()
+            temp_teacher_surname = input()
+            return CourseTeacher(temp_teacher_name, temp_teacher_surname)
+        print("Well.... Could you type the name of course")
+        temp_course_name = input()
+        if arg_choice == 1:
+            new_course = KievCourse(temp_course_name, cls.create_subject(3))
+        if arg_choice == 2:
+            temp_city = input("You chose the not local course. Where are these courses (city name)?\n")
+            new_course = KievRegionCourse(temp_course_name, cls.create_subject(3), temp_city)
 
-    def create_offsite_course(self, course_name, course_city, main_teacher):
-        return KievRegionCourse(course_name, main_teacher, course_city)
-
-    def create_teacher(self, name, surname):
-        return CourseTeacher(name, surname)
-
-
-def adding_new_course(type_of_course, whole_data):
-    print("Well.... Could you type the name of course and the teacher's info (name with surname)")
-    temp_course_name = input()
-    temp_teacher_name = input()
-    temp_teacher_surname = input()
-    if type_of_course:
-        temp_city = input("You chose the not local course. Where are these courses (city name)?\n")
-        new_course = main_factory.create_offsite_course(temp_course_name, temp_city,
-                                                        main_factory.create_teacher(temp_teacher_name,
-                                                                                    temp_teacher_surname))
-
-    else:
-        new_course = main_factory.create_local_course(temp_course_name,
-                                                      main_factory.create_teacher(temp_teacher_name,
-                                                                                  temp_teacher_surname))
-    print("Now, print the whole program of the course (when you wish to finish, please type the 'quit')")
-
-    while True:
-        answer2 = input()
-        if answer2.lower() == 'quit':
-            break
-        new_course.whole_program = answer2
-
-    whole_data.append({"name": new_course.name, "city": new_course.city(),
-                       "teacher name": new_course.assigned_teacher.name,
-                       "teacher surname": new_course.assigned_teacher.surname,
-                       "whole program": new_course.whole_program})
-
-    with open("Courses.json", 'w') as fi:
-        json.dump(whole_data, fi)
+        print("Now, print the whole program of the course (when you wish to finish, please type the 'quit')")
+        while True:
+            answer2 = input()
+            if answer2.lower() == 'quit':
+                break
+            new_course.whole_program = answer2
+        my_bd.cursor().execute(f"""
+            INSERT INTO Course(Name, City)
+            VALUES (7568, {new_course.name}, {new_course.city()});
+        """)
+        my_bd.cursor().execute(f"""
+                    INSERT INTO Teacher(Name, Surname)
+                    VALUES (7568, {new_course.assigned_teacher.name}, 
+                    {new_course.assigned_teacher.surname});
+                """)
+        return new_course
 
 
-def finding_course(whole_data):
-    print("Print the course, which you would like to find (the name)")
+def finding_course():
+    print("Print the course name, which you would like to find (the name)")
     the_name = input()
+    my_bd.cursor().execute("""
+        SELECT Name, (SELECT Name, Surname FROM Teacher WHERE Teacher.TeacherID =  Course.TeacherID), 
+        (SELECT Surname FROM Teacher WHERE Teacher.TeacherID =  Course.TeacherID), 
+        City FROM Course 
+    """)
+    whole_data = my_bd.cursor().fetchall()
     for temp_data in whole_data:
-        if the_name == temp_data["name"]:
-            if temp_data["city"] == "Kiev":
-                new_course = main_factory.create_local_course(temp_data["name"],
-                                                              main_factory.create_teacher(temp_data["teacher name"],
-                                                                                          temp_data["teacher surname"]))
+        if the_name == temp_data[0]:
+            if temp_data[3] == "Kiev":
+                new_course = CourseFactory.create_subject(4, temp_data[0],
+                                                          temp_data[1], temp_data[2])
+
             else:
-                new_course = \
-                    main_factory.create_offsite_course(temp_data["name"],
-                                                       temp_data["city"],
-                                                       main_factory.create_teacher(temp_data["teacher name"],
-                                                                                   temp_data["teacher surname"]))
-            for temp_temp in temp_data["whole program"]:
-                new_course.whole_program = temp_temp
-            print(new_course)
+                new_course = CourseFactory.create_subject(5, temp_data[0],
+                                                          temp_data[1], temp_data[2])
             return
     print("No matches....")
 
 
-def choice1(arg_answer1, whole_data):
+def choice1(arg_answer1):
     if arg_answer1 == '1':
-        adding_new_course(None, whole_data)
+        CourseFactory.create_subject(arg_choice=1)
     elif arg_answer1 == '2':
-        adding_new_course(1, whole_data)
+        CourseFactory.create_subject(arg_choice=2)
     elif arg_answer1 == '3':
-        finding_course(whole_data)
+        finding_course()
+
+
+def creating_database():
+    with my_bd.cursor() as cursor:
+        cursor.execute(f"""USE {config.db_name};""")
+        cursor.execute("""CREATE TABLE Teacher (
+            TeacherID INT PRIMARY KEY AUTO_INCREMENT,
+            Name VARCHAR(20) NOT NULL,
+            Surname VARCHAR(20) NOT NULL
+            );
+        """)
+        cursor.execute("""CREATE TABLE Course (
+                    CourseID INT PRIMARY KEY AUTO_INCREMENT,
+                    TeacherID INT,  
+                    Name VARCHAR(20) NOT NULL,
+                    City VARCHAR(20) NOT NULL
+                    );
+                """)
+        cursor.execute("""
+        ALTER TABLE Course
+        ADD FOREIGN KEY (TeacherID) REFERENCES Teacher(TeacherID);
+        """)
 
 
 if __name__ == '__main__':
-    main_factory = CourseFactory()
-    with open("Courses.json", 'r') as f:
-        data = json.load(f)
+    my_bd = pymysql.connect(
+        host=config.host,
+        user=config.user,
+        password=config.password,
+        database=config.db_name
+    )
+    # creating_database()
+
     print("Hello! What would you like to do next?"
           "\n1. Add new local course"
           "\n2. Add new offsite course"
@@ -296,4 +311,5 @@ if __name__ == '__main__':
     while asnwer1 not in ['1', '2', '3']:
         print("Invalid input!")
         asnwer1 = input("Type the number")
-    choice1(asnwer1, data)
+    choice1(asnwer1)
+    my_bd.close()
